@@ -7,7 +7,7 @@ import win32evtlog
 import threading
 
 
-# Set broadcast to main
+# Set broadcast to main function
 try:
     context = zmq.Context()
     socket = context.socket(zmq.PUB)
