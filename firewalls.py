@@ -1,0 +1,86 @@
+import win32com.client
+import zmq
+import json
+import errno
+import sys
+import threading
+
+port = 48268
+
+# Set broadcast to main function
+try:
+    context = zmq.Context()
+    socket = context.socket(zmq.PUB)
+    socket.bind(f"tcp://127.0.0.1:{port}")
+
+except zmq.error.ContextTerminated:
+    print("Logs Error: The ZeroMQ context was terminated.")
+except zmq.ZMQError as e:
+    if e.errno == errno.EADDRINUSE:
+        print(f"Logs Error: Port {port} is already in use by another process")
+    elif e.errno == errno.EINVAL:
+        print("Logs Error: Invaild endpoint supplied")
+    elif e.errno == errno.EADDRNOTAVAIL:
+        print("Logs Error: The provided address was not locally avaible")
+    elif e.errno == errno.ENOTSOCK:
+        print("Logs Error: The socket was invalid")
+    else:
+        print(f"ZeroMQ Logs Error: ({e.errno}): {e}")
+except Exception as e:
+    print(f"An unexpected Logs non-ZMQ error occurred: {e}")
+
+class firewalls():
+    def __init__(self, action:list = ["view"]):
+        self.action = action
+        self.stream_firewalls
+    def stream_firewalls(self):
+        threads = []
+        if ("view" in self.action):
+            t1 = threading.Thread(target=self.view_firewall_rules, daemon=True)
+            t1.start()
+            threads.append(t1)
+        if ("edit" in self.action):
+            t2 = threading.Thread(target=self.edit_firewall_rules, daemon=True)
+            t2.start()
+            threads.append(t2)
+
+        # Keep the main thread alive so background threads can work
+        try:
+            for thread in threads:
+                thread.join()
+        except KeyboardInterrupt:
+            print("\nShutting down log streams...")
+        finally:
+            socket.close()
+            context.term()
+
+    def view_firewall_rules():
+        # Windows 
+        if sys.platform == "win32":
+            try:
+                firewall_policy = win32com.client.Dispatch("HNetCfg.FwPolicy2")
+                firewall_rules = firewall_policy.Rules
+
+                for rule in firewall_rules:
+                    if rule.Enabled:
+                        payload = {
+                        "Name": str(rule.Name),
+                        "Description": str(rule.Description),
+                        "Protocol": str(rule.Protocol),
+                        "Local_ports": str(rule.LocalPorts),
+                        "Action": str('Allow' if rule.Action == 1 else 'Block'),
+                        "Direction": str('Inbound' if rule.Direction == 1 else 'Outbound')
+                    }
+                    # Send out via your socket if it was passed in
+                    json_data = json.dumps(payload)
+                    if socket:
+                        socket.send_string(json_data)
+                    else:
+                        # Fallback print for debugging if socket isn't connected
+                        print(f"[STREAM] {json_data}")
+            except Exception as e:
+                print(f"An error occurred accessing the COM interface: {e}")
+        elif sys.platform.startswith("linux"):
+            pass
+    def edit_firewall_rules():
+        pass
