@@ -5,18 +5,21 @@ import logs
 import zmq
 import json
 import errno
+import threading
+
+port = 48268
 
 # Recieve data from applications
 try:
     context = zmq.Context()
-    socket = context.socket(zmq.PUB)
-    socket.bind("tcp://127.0.0.1:7268")
+    socket = context.socket(zmq.SUB)
+    socket.connect(f"tcp://127.0.0.1:{port}")
 
 except zmq.error.ContextTerminated:
     print("Error: The ZeroMQ context was terminated.")
 except zmq.ZMQError as e:
     if e.errno == errno.EADDRINUSE:
-        print("Error: Port 7268 is already in use by another process")
+        print(f"Error: Port {port} is already in use by another process")
     elif e.errno == errno.EINVAL:
         print("Error: Invaild endpoint supplied")
     elif e.errno == errno.EADDRNOTAVAIL:
@@ -39,18 +42,29 @@ def is_admin():
             return ctypes.windll.shell32.IsUserAnAdmin() != 0
         except AttributeError:
             return False
+
 if not(is_admin()):
     print("Error: Privs not admin")
     sys.exit()
 
 def main():
-    while True:
-        #start streaming logs
-        logs.stream_logs
+    #start streaming logs
+    log_stream = threading.Thread(target=logs.stream_logs, daemon=True)
+    log_stream.start()
+    try:
+        while True:
+            try:
 
-        message = socket.recv_string()
-        log_data = json.loads(message)
-        print(log_data)
+                message = socket.recv_string()
+                log_data = json.loads(message)
+                print(log_data)
+
+            except KeyboardInterrupt:
+                break
+    finally:
+        socket.close()
+        context.term()
+
     
 if __name__ == "__main__":
     main()
