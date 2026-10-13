@@ -1,3 +1,4 @@
+import docker.errors
 import docker
 import zmq
 import json
@@ -128,16 +129,22 @@ class stream_logs():
         if sys.platform.startswith("linux"):
             # start streaming all system logs
             try:
-                logs = subprocess.Popen(["sudo", "journalctl", "-f"], stdout=subprocess.PIPE, text=True)
+                logs = subprocess.Popen(["sudo", "journalctl", "-f"], stdout=subprocess.PIPE,stderr=subprocess.STDOUT, text=True,bufsize=1)
             except subprocess.SubprocessError as e:
                 print(f"Error: {e}")
             
             # stream system logs to main
             try:
-                for sys_logs in logs.stdout:
-                    socket.send_string(json.dumps(sys_logs.strip()))
+                for sys_logs in iter(logs.stdout.readline, ""):
+                    cleaned_log = sys_logs.strip()
+                    if cleaned_log:  # Skip empty lines
+                        socket.send_string(json.dumps(cleaned_log))
             except Exception as e:
                 print(f"Logs Error: {e}")
+            finally:
+                if logs.poll() is None:
+                    logs.terminate()
+                    logs.wait()
         
         # Windows 
         elif sys.platform == "win32":

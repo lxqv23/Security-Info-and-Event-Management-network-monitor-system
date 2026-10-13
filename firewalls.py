@@ -4,6 +4,8 @@ import json
 import errno
 import sys
 import threading
+import shutil
+import subprocess
 
 port = 48268
 
@@ -49,12 +51,17 @@ class firewalls():
             for thread in threads:
                 thread.join()
         except KeyboardInterrupt:
-            print("\nShutting down log streams...")
+            print("\nShutting down firewall streams...")
         finally:
             socket.close()
             context.term()
-
-    def view_firewall_rules():
+    def linux_get_installed_firewall(self):
+        tools = ['firewall-cmd', 'ufw', 'nft', 'iptables']
+        for tool in tools:
+            if shutil.which(tool) is not None:
+                return tool
+        return None
+    def view_firewall_rules(self):
         # Windows 
         if sys.platform == "win32":
             try:
@@ -81,6 +88,24 @@ class firewalls():
             except Exception as e:
                 print(f"An error occurred accessing the COM interface: {e}")
         elif sys.platform.startswith("linux"):
-            pass
-    def edit_firewall_rules():
+            tool = self.linux_get_installed_firewall()
+            if not tool:
+                print("Error: No recognixed firewall utility on the Linux system")
+                return
+            commands = {
+            'firewall-cmd': ['sudo', 'firewall-cmd', '--list-all'],
+            'ufw':          ['sudo', 'ufw', 'status', 'verbose'],
+            'nft':          ['sudo', 'nft', 'list', 'ruleset'],
+            'iptables':     ['sudo', 'iptables', '-S']
+            }
+            cmd = commands[tool]
+            try:
+                rules = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                print(result.stdout)
+            except subprocess.CalledProcessError as e:
+                print(f"Firewall Execution failed. Ensure script is run with 'sudo'.\nError: {e.stderr}", file=sys.stderr)
+            except PermissionError:
+                print("Firewall Permission Denied: This script requires root (sudo) privileges.", file=sys.stderr)
+
+    def edit_firewall_rules(self):
         pass
