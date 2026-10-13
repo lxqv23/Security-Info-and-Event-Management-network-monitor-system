@@ -1,4 +1,5 @@
 import win32com.client
+import pythoncom
 import zmq
 import json
 import errno
@@ -12,8 +13,8 @@ port = 48268
 # Set broadcast to main function
 try:
     context = zmq.Context()
-    socket = context.socket(zmq.PUB)
-    socket.bind(f"tcp://127.0.0.1:{port}")
+    socket = context.socket(zmq.PUSH)
+    socket.connect(f"tcp://127.0.0.1:{port}")
 
 except zmq.error.ContextTerminated:
     print("Logs Error: The ZeroMQ context was terminated.")
@@ -34,7 +35,7 @@ except Exception as e:
 class firewalls():
     def __init__(self, action:list = ["view"]):
         self.action = action
-        self.stream_firewalls
+        self.stream_firewalls()
     def stream_firewalls(self):
         threads = []
         if ("view" in self.action):
@@ -64,6 +65,7 @@ class firewalls():
     def view_firewall_rules(self):
         # Windows 
         if sys.platform == "win32":
+            pythoncom.CoInitialize()
             try:
                 firewall_policy = win32com.client.Dispatch("HNetCfg.FwPolicy2")
                 firewall_rules = firewall_policy.Rules
@@ -78,15 +80,13 @@ class firewalls():
                         "Action": str('Allow' if rule.Action == 1 else 'Block'),
                         "Direction": str('Inbound' if rule.Direction == 1 else 'Outbound')
                     }
-                    # Send out via your socket if it was passed in
+                    # Send out via socket if it was passed in
                     json_data = json.dumps(payload)
-                    if socket:
-                        socket.send_string(json_data)
-                    else:
-                        # Fallback print for debugging if socket isn't connected
-                        print(f"[STREAM] {json_data}")
+                    socket.send_string(json_data)
             except Exception as e:
                 print(f"An error occurred accessing the COM interface: {e}")
+            finally:
+                pythoncom.CoUninitialize()
         elif sys.platform.startswith("linux"):
             tool = self.linux_get_installed_firewall()
             if not tool:
